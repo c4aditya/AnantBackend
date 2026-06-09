@@ -11,7 +11,10 @@ const app = express();
 // Middleware: Enable Cross-Origin Resource Sharing (CORS) with support for credentials/cookies
 app.use(
   cors({
-    origin: true, // Echoes the request origin, allowing all origins in dev with credentials
+    origin: [
+      "https://anantairways.in",
+      "https://www.anantairways.in"
+    ],
     credentials: true
   })
 );

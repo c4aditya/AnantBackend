@@ -75,6 +75,7 @@ const addUser = asyncHandler(async (req, res, next) => {
 
   // Create standard user
   const user = await User.create({
+     anantEmail,
     userEmail,
     password,    
     userPhoneNumber,
@@ -84,6 +85,7 @@ const addUser = asyncHandler(async (req, res, next) => {
   // Exclude password from return payload
   const responseData = {
     _id: user._id, 
+    anantEmail: user.anantEmail,
     userEmail: user.userEmail,   
     userPhoneNumber: user.userPhoneNumber,
     role: user.role,

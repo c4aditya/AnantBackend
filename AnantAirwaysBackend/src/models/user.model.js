@@ -20,17 +20,6 @@ const userSchema = new mongoose.Schema(
       minlength: [6, 'Password must be at least 6 characters long'],
       select: false // Exclude from query results by default
     },
-    userEmail: {
-      type: String,
-      required: [true, 'Personal Email is required'],
-      unique: true,
-      trim: true,
-      lowercase: true,
-      match: [
-        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-        'Please provide a valid personal email address'
-      ]
-    },
     userPhoneNumber: {
       type: String,
       required: [true, 'Personal Phone Number is required'],

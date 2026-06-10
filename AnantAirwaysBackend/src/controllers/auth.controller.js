@@ -46,18 +46,17 @@ const sendTokenResponse = (user, statusCode, message, res) => {
  * Public or admin setup endpoint
  */
 const createAdmin = asyncHandler(async (req, res, next) => {
-  const { anantEmail, password, userEmail, userPhoneNumber } = req.body;
+  const { anantEmail, password , userPhoneNumber} = req.body;
 
-  if (!anantEmail || !password || !userEmail || !userPhoneNumber) {
+  if (!anantEmail || !password ) {
     return next(new ValidationError('All fields (anantEmail, password, userEmail, userPhoneNumber) are required'));
   }
 
   // Create admin user
   const admin = await User.create({
     anantEmail,
-    password,
-    userEmail,
-    userPhoneNumber,
+    password,  
+    userPhoneNumber, 
     role: 'admin'
   });
 
@@ -68,7 +67,7 @@ const createAdmin = asyncHandler(async (req, res, next) => {
  * Add User (Admin only)
  */
 const addUser = asyncHandler(async (req, res, next) => {
-  const { anantEmail, password, userEmail, userPhoneNumber } = req.body;
+  const { anantEmail, password, userPhoneNumber } = req.body;
 
   if (!anantEmail || !password || !userEmail || !userPhoneNumber) {
     return next(new ValidationError('All fields (anantEmail, password, userEmail, userPhoneNumber) are required'));
@@ -78,7 +77,7 @@ const addUser = asyncHandler(async (req, res, next) => {
   const user = await User.create({
     anantEmail,
     password,
-    userEmail,
+    
     userPhoneNumber,
     role: 'user'
   });
@@ -87,7 +86,7 @@ const addUser = asyncHandler(async (req, res, next) => {
   const responseData = {
     _id: user._id,
     anantEmail: user.anantEmail,
-    userEmail: user.userEmail,
+   
     userPhoneNumber: user.userPhoneNumber,
     role: user.role,
     isActive: user.isActive,
@@ -101,7 +100,7 @@ const addUser = asyncHandler(async (req, res, next) => {
  * User Login
  */
 const loginUser = asyncHandler(async (req, res, next) => {
-  const { anantEmail, password, userEmail, userPhoneNumber } = req.body;
+  const { anantEmail, password,  userPhoneNumber } = req.body;
 
   // Validate inputs
   if (!anantEmail || !password || !userEmail || !userPhoneNumber) {
@@ -142,17 +141,16 @@ const loginUser = asyncHandler(async (req, res, next) => {
  * Admin Login
  */
 const loginAdmin = asyncHandler(async (req, res, next) => {
-  const { anantEmail, password, userEmail, userPhoneNumber } = req.body;
+  const { anantEmail, password,  userPhoneNumber } = req.body;
 
   // Validate inputs
-  if (!anantEmail || !password || !userEmail || !userPhoneNumber) {
+  if (!anantEmail || !password  || !userPhoneNumber) {
     return next(new ValidationError('All login fields are required'));
   }
 
   // Check user exists matching all fields and verify role is 'admin'
   const admin = await User.findOne({
-    anantEmail,
-    userEmail,
+    anantEmail,    
     userPhoneNumber,
     role: 'admin'
   }).select('+password');
@@ -196,7 +194,7 @@ const getCurrentUser = asyncHandler(async (req, res, next) => {
   const user = {
     _id: req.user._id,
     anantEmail: req.user.anantEmail,
-    userEmail: req.user.userEmail,
+    
     userPhoneNumber: req.user.userPhoneNumber,
     role: req.user.role,
     isActive: req.user.isActive,

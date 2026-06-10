@@ -12,6 +12,7 @@ const app = express();
 app.use(
   cors({
     origin: [
+      
       "https://anantairways.in",
       "https://www.anantairways.in"
     ],

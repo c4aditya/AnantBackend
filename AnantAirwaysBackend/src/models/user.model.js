@@ -5,7 +5,7 @@ const userSchema = new mongoose.Schema(
   {
     anantEmail: {
       type: String,   
-      unique: true,
+    
       trim: true,
       lowercase: true,
       match: [

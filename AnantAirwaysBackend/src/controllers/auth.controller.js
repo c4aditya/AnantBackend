@@ -67,17 +67,16 @@ const createAdmin = asyncHandler(async (req, res, next) => {
  * Add User (Admin only)
  */
 const addUser = asyncHandler(async (req, res, next) => {
-  const { anantEmail, password, userPhoneNumber } = req.body;
+  const { userEmail, password, userPhoneNumber } = req.body;
 
-  if (!anantEmail || !password || !userEmail || !userPhoneNumber) {
-    return next(new ValidationError('All fields (anantEmail, password, userEmail, userPhoneNumber) are required'));
+  if (!userEmail || !password ||  !userPhoneNumber) {
+    return next(new ValidationError('All fields (anantEmail, password,  userPhoneNumber) are required'));
   }
 
   // Create standard user
   const user = await User.create({
-    anantEmail,
-    password,
-    
+    userEmail,
+    password,    
     userPhoneNumber,
     role: 'user'
   });
@@ -85,8 +84,7 @@ const addUser = asyncHandler(async (req, res, next) => {
   // Exclude password from return payload
   const responseData = {
     _id: user._id,
-    anantEmail: user.anantEmail,
-   
+    anantEmail: user.anantEmail,   
     userPhoneNumber: user.userPhoneNumber,
     role: user.role,
     isActive: user.isActive,

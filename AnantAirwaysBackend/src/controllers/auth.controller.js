@@ -67,9 +67,9 @@ const createAdmin = asyncHandler(async (req, res, next) => {
  * Add User (Admin only)
  */
 const addUser = asyncHandler(async (req, res, next) => {
-  const { userEmail, password, userPhoneNumber } = req.body;
+  const {anantEmail,  userEmail, password, userPhoneNumber } = req.body;
 
-  if (!userEmail || !password ||  !userPhoneNumber) {
+  if (!anantEmail || !userEmail  || !password ||  !userPhoneNumber) {
     return next(new ValidationError('All fields (anantEmail, password,  userPhoneNumber) are required'));
   }
 

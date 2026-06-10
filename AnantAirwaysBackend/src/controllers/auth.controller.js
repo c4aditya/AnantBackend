@@ -83,8 +83,7 @@ const addUser = asyncHandler(async (req, res, next) => {
 
   // Exclude password from return payload
   const responseData = {
-    _id: user._id,
-    anantEmail: user.anantEmail,   
+    _id: user._id,    
     userPhoneNumber: user.userPhoneNumber,
     role: user.role,
     isActive: user.isActive,

@@ -110,7 +110,7 @@ const loginUser = asyncHandler(async (req, res, next) => {
   // Check user exists matching all three fields
   const user = await User.findOne({
     anantEmail,
-    userEmail,
+    
     userPhoneNumber
   }).select('+password');
 

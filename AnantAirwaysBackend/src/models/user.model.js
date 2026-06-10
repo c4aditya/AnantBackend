@@ -4,8 +4,7 @@ const bcrypt = require('bcryptjs');
 const userSchema = new mongoose.Schema(
   {
     anantEmail: {
-      type: String,   
-    
+      type: String,      
       trim: true,
       lowercase: true,
       match: [
@@ -21,7 +20,7 @@ const userSchema = new mongoose.Schema(
     },
     userEmail: {
       type: String,
-      required: [true, 'Personal Email is required'],
+      
       unique: true,
       trim: true,
       lowercase: true,

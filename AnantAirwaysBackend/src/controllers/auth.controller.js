@@ -103,7 +103,7 @@ const loginUser = asyncHandler(async (req, res, next) => {
   const { anantEmail, password,  userPhoneNumber } = req.body;
 
   // Validate inputs
-  if (!anantEmail || !password || !userEmail || !userPhoneNumber) {
+  if (!anantEmail || !password ||  !userPhoneNumber) {
     return next(new ValidationError('All login fields are required'));
   }
 

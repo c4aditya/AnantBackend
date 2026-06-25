@@ -73,9 +73,17 @@ const addUser = asyncHandler(async (req, res, next) => {
     return next(new ValidationError('All fields (anantEmail, password,  userPhoneNumber) are required'));
   }
 
+  if(anantEmail !== userEmail){
+
+    return res.status(400).json({
+      success: false,
+      message: 'Both emails must be the same. Please provide the same email for both anantEmail and userEmail.'
+    });
+  }
+
   // Create standard user
   const user = await User.create({
-     anantEmail,
+    anantEmail,
     userEmail,
     password,    
     userPhoneNumber,

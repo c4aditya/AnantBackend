@@ -14,7 +14,8 @@ app.use(
     origin: [
       
       "https://anantairways.in",
-      "https://www.anantairways.in"
+      "https://www.anantairways.in",
+      "http://localhost:5173/"
     ],
     credentials: true
   })

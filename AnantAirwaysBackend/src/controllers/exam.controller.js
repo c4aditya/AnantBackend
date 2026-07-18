@@ -1,4 +1,5 @@
 const Exam = require('../models/exam.model');
+const Result = require('../models/result.model');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../utils/errors');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendResponse } = require('../utils/apiResponse');
@@ -245,10 +246,71 @@ const submitExam = asyncHandler(async (req, res, next) => {
     percentage: exam.totalMarks > 0 ? Number(((marksObtained / exam.totalMarks) * 100).toFixed(2)) : 0
   };
 
+  // Database Save with proper logging and duplicate prevention logic
+  let savedResult;
+  try {
+    savedResult = await Result.create({
+      user: req.user._id,
+      userEmail: req.user.userEmail || req.user.anantEmail || 'Unknown',
+      examId: exam._id,
+      examName: exam.title,
+      marksObtained: resultSummary.marksObtained,
+      totalMarks: resultSummary.totalMarks,
+      percentage: resultSummary.percentage,
+      evaluation: evaluationDetails,
+      status: 'Completed'
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      console.log(`[INFO] Duplicate result submission prevention triggered for user ${req.user._id} and exam ${exam._id}.`);
+      // Find existing submission to return it
+      savedResult = await Result.findOne({ user: req.user._id, examId: exam._id });
+    } else {
+      console.error('[ERROR] Failed to save exam submission:', err);
+      return next(err);
+    }
+  }
+
   return sendResponse(res, 200, 'Exam submitted and graded successfully', {
-    summary: resultSummary,
+    summary: {
+      ...resultSummary,
+      _id: savedResult ? savedResult._id : undefined
+    },
     evaluation: evaluationDetails
   });
+});
+
+/**
+ * Get All Submissions (Admin Only)
+ */
+const getAllSubmissions = asyncHandler(async (req, res, next) => {
+  const submissions = await Result.find({})
+    .sort({ createdAt: -1 });
+
+  return sendResponse(res, 200, 'All exam submissions retrieved successfully', { submissions });
+});
+
+/**
+ * Delete Submission (Admin Only)
+ */
+const deleteSubmission = asyncHandler(async (req, res, next) => {
+  const submission = await Result.findByIdAndDelete(req.params.id);
+
+  if (!submission) {
+    return next(new NotFoundError('Submission not found'));
+  }
+
+  return sendResponse(res, 200, 'Submission deleted successfully');
+});
+
+/**
+ * Get Completed Exams for Current User (User and Admin)
+ */
+const getCompletedExams = asyncHandler(async (req, res, next) => {
+  const submissions = await Result.find({ user: req.user._id }).select('examId');
+  const completedExamIds = submissions.map((sub) => sub.examId.toString());
+
+  return sendResponse(res, 200, 'Completed exam IDs retrieved successfully', { completedExamIds });
 });
 
 module.exports = {
@@ -258,5 +320,8 @@ module.exports = {
   updateExam,
   deleteExam,
   publishExam,
-  submitExam
+  submitExam,
+  getAllSubmissions,
+  deleteSubmission,
+  getCompletedExams
 };

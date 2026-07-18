@@ -101,7 +101,7 @@ const runTests = async () => {
       body: JSON.stringify({
         anantEmail: 'student@anantairways.com',
         password: 'studentpassword123',
-        userEmail: 'student.personal@gmail.com',
+        userEmail: 'student@anantairways.com',
         userPhoneNumber: '+12223334444'
       })
     });
@@ -117,9 +117,9 @@ const runTests = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        anantEmail: 'student@anantairways.com',
+        anantEmail: 'wrong.student@anantairways.com', // Wrong
         password: 'studentpassword123',
-        userEmail: 'wrong.personal@gmail.com', // Wrong
+        userEmail: 'student@anantairways.com',
         userPhoneNumber: '+12223334444'
       })
     });
@@ -137,7 +137,7 @@ const runTests = async () => {
       body: JSON.stringify({
         anantEmail: 'student@anantairways.com',
         password: 'studentpassword123',
-        userEmail: 'student.personal@gmail.com',
+        userEmail: 'student@anantairways.com',
         userPhoneNumber: '+12223334444'
       })
     });

@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/user.model');
-const { ValidationError, UnauthorizedError, AppError } = require('../utils/errors');
+const { ValidationError, UnauthorizedError, AppError, NotFoundError } = require('../utils/errors');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendResponse } = require('../utils/apiResponse');
 
@@ -220,6 +220,19 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
   return sendResponse(res, 200, 'Users retrieved successfully', { users });
 });
 
+/**
+ * Delete User (Admin only)
+ */
+const deleteUser = asyncHandler(async (req, res, next) => {
+  const user = await User.findByIdAndDelete(req.params.id);
+
+  if (!user) {
+    return next(new NotFoundError('User not found'));
+  }
+
+  return sendResponse(res, 200, 'User deleted successfully');
+});
+
 module.exports = {
   createAdmin,
   addUser,
@@ -227,5 +240,6 @@ module.exports = {
   loginAdmin,
   logout,
   getCurrentUser,
-  getAllUsers
+  getAllUsers,
+  deleteUser
 };

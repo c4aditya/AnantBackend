@@ -7,7 +7,8 @@ const {
   loginAdmin,
   logout,
   getCurrentUser,
-  getAllUsers
+  getAllUsers,
+  deleteUser
 } = require('../controllers/auth.controller');
 const { protect, authorizeRoles } = require('../middlewares/auth.middleware');
 
@@ -23,5 +24,6 @@ router.get('/me', protect, getCurrentUser);
 // Admin-Only Routes
 router.post('/add-user', protect, authorizeRoles('admin'), addUser);
 router.get('/users', protect, authorizeRoles('admin'), getAllUsers);
+router.delete('/users/:id', protect, authorizeRoles('admin'), deleteUser);
 
 module.exports = router;

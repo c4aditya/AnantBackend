@@ -7,7 +7,10 @@ const {
   updateExam,
   deleteExam,
   publishExam,
-  submitExam
+  submitExam,
+  getAllSubmissions,
+  deleteSubmission,
+  getCompletedExams
 } = require('../controllers/exam.controller');
 const { protect, authorizeRoles } = require('../middlewares/auth.middleware');
 
@@ -16,6 +19,9 @@ router.use(protect);
 
 // User and Admin shared/conditional routes
 router.get('/', getAllExams); // Lists all for Admin, published-only for User
+router.get('/completed', getCompletedExams);
+router.get('/submissions', authorizeRoles('admin'), getAllSubmissions);
+router.delete('/submissions/:id', authorizeRoles('admin'), deleteSubmission);
 router.get('/:id', getSingleExam); // Retrieves full for Admin, published-only stripped for User
 router.post('/submit', authorizeRoles('user', 'admin'), submitExam); // User takes/submits exam
 

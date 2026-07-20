@@ -25,5 +25,6 @@ router.get('/me', protect, getCurrentUser);
 router.post('/add-user', protect, authorizeRoles('admin'), addUser);
 router.get('/users', protect, authorizeRoles('admin'), getAllUsers);
 router.delete('/users/:id', protect, authorizeRoles('admin'), deleteUser);
+router.delete('/user/:id', protect, authorizeRoles('admin'), deleteUser);
 
 module.exports = router;

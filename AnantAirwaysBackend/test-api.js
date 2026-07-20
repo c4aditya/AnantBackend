@@ -109,7 +109,8 @@ const runTests = async () => {
     if (addUserRes.status !== 201 || !addUserData.success) {
       throw new Error(`Add user failed: ${JSON.stringify(addUserData)}`);
     }
-    console.log('✓ User added successfully:', addUserData.data.user.anantEmail);
+    const userId = addUserData.data.user._id;
+    console.log('✓ User added successfully:', addUserData.data.user.anantEmail, 'with ID:', userId);
 
     // 5. User Login with incorrect details mismatch check
     console.log('\nTest 5: Logging in as User with incorrect personal email...');
@@ -336,6 +337,20 @@ const runTests = async () => {
       throw new Error(`Delete submission failed: ${JSON.stringify(deleteSubData)}`);
     }
     console.log('✓ Candidate submission deleted successfully by Admin.');
+
+    // 16. Admin deletes user
+    console.log('\nTest 16: Admin deleting user...');
+    const deleteUserRes = await fetch(`${BASE_URL}/auth/users/${userId}`, {
+      method: 'DELETE',
+      headers: { 'Cookie': adminCookie }
+    });
+    const deleteUserData = await deleteUserRes.json();
+    console.log('Delete User response status:', deleteUserRes.status);
+    console.log('Delete User response body:', deleteUserData);
+    if (deleteUserRes.status !== 200 || !deleteUserData.success) {
+      throw new Error(`Delete user failed: ${JSON.stringify(deleteUserData)}`);
+    }
+    console.log('✓ User deleted successfully by Admin.');
 
     // Clean up
     console.log('\n--- ALL INTEGRATION TESTS PASSED SUCCESSFULY ---');

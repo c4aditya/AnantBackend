@@ -8,18 +8,32 @@ const { NotFoundError } = require('./utils/errors');
 
 const app = express();
 
-// Middleware: Enable Cross-Origin Resource Sharing (CORS) with support for credentials/cookies
-app.use(
-  cors({
-    origin: [
-      
-      "https://anantairways.in",
-      "https://www.anantairways.in",
-      "http://localhost:5173/"
-    ],
-    credentials: true
-  })
-);
+const allowedOrigins = [
+  'https://anantairways.in',
+  'https://www.anantairways.in',
+  'http://localhost:5173',
+  'http://localhost:5173/',
+  'http://localhost:3000',
+  'http://localhost:5174'
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    const isAllowed = allowedOrigins.some((o) => o.replace(/\/$/, '') === normalizedOrigin);
+    if (isAllowed) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Allow configured origins
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cookie']
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Middleware: Parse incoming JSON requests
 app.use(express.json());

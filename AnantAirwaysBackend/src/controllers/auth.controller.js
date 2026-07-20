@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user.model');
 const { ValidationError, UnauthorizedError, AppError, NotFoundError } = require('../utils/errors');
@@ -225,6 +226,10 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
  * Delete User (Admin only)
  */
 const deleteUser = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return next(new NotFoundError('User not found'));
+  }
+
   const user = await User.findByIdAndDelete(req.params.id);
 
   if (!user) {

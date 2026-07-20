@@ -226,16 +226,21 @@ const getAllUsers = asyncHandler(async (req, res, next) => {
  * Delete User (Admin only)
  */
 const deleteUser = asyncHandler(async (req, res, next) => {
+  console.log(`🗑️ [DELETE USER REQUEST] Target ID: "${req.params.id}" requested by Admin ID: "${req.user ? req.user._id : 'unknown'}"`);
+
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    console.error(`❌ [DELETE USER ERROR] Invalid ObjectId format: "${req.params.id}"`);
     return next(new NotFoundError('User not found'));
   }
 
   const user = await User.findByIdAndDelete(req.params.id);
 
   if (!user) {
+    console.error(`❌ [DELETE USER ERROR] User with ID "${req.params.id}" not found in database.`);
     return next(new NotFoundError('User not found'));
   }
 
+  console.log(`✓ [DELETE USER SUCCESS] User "${user.anantEmail || user._id}" deleted successfully.`);
   return sendResponse(res, 200, 'User deleted successfully');
 });
 

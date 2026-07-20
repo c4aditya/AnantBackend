@@ -315,16 +315,21 @@ const getAllSubmissions = asyncHandler(async (req, res, next) => {
  * Delete Submission (Admin Only)
  */
 const deleteSubmission = asyncHandler(async (req, res, next) => {
+  console.log(`🗑️ [DELETE SUBMISSION REQUEST] Target ID: "${req.params.id}" requested by Admin ID: "${req.user ? req.user._id : 'unknown'}"`);
+
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    console.error(`❌ [DELETE SUBMISSION ERROR] Invalid ObjectId format: "${req.params.id}"`);
     return next(new NotFoundError('Submission not found'));
   }
 
   const submission = await Result.findByIdAndDelete(req.params.id);
 
   if (!submission) {
+    console.error(`❌ [DELETE SUBMISSION ERROR] Submission with ID "${req.params.id}" not found in database.`);
     return next(new NotFoundError('Submission not found'));
   }
 
+  console.log(`✓ [DELETE SUBMISSION SUCCESS] Submission "${req.params.id}" deleted successfully.`);
   return sendResponse(res, 200, 'Submission deleted successfully');
 });
 

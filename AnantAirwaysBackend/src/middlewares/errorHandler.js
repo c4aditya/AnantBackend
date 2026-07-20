@@ -93,6 +93,23 @@ const errorHandler = (err, req, res, next) => {
     error = handleJWTExpiredError();
   }
 
+  // Always print detailed error to server terminal console
+  console.error(`❌ [SERVER ERROR] ${req.method} ${req.originalUrl} - Status ${error.statusCode || err.statusCode || 500}: ${error.message || err.message}`);
+  if (err.stack) {
+    console.error(err.stack);
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    // Send full error details in development
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      status: err.status,
+      message: err.message,
+      stack: err.stack,
+      error: err
+    });
+  }
+
   // Operational, trusted error: send message to client
   if (error.isOperational) {
     return res.status(error.statusCode).json({
@@ -103,7 +120,6 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // Programming or other unknown error: don't leak details to client
-  console.error('ERROR 💥:', err);
   return res.status(500).json({
     success: false,
     status: 'error',

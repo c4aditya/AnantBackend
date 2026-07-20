@@ -35,6 +35,12 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
+// Middleware: Request logging for server terminal debugging
+app.use((req, res, next) => {
+  console.log(`📥 [REQUEST] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // Middleware: Parse incoming JSON requests
 app.use(express.json());
 
@@ -58,6 +64,7 @@ app.get('/health', (req, res) => {
 
 // Fallback Route handler for 404 (Not Found)
 app.all('*', (req, res, next) => {
+  console.error(`⚠️ [404 NOT FOUND] ${req.method} ${req.originalUrl}`);
   next(new NotFoundError(`Can't find ${req.originalUrl} on this server!`));
 });
 

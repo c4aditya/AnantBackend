@@ -17,16 +17,18 @@ const { protect, authorizeRoles } = require('../middlewares/auth.middleware');
 // All exam routes require authentication
 router.use(protect);
 
-// User and Admin shared/conditional routes
+// Static / Fixed routes (MUST be defined before dynamic :id parameter routes)
 router.get('/', getAllExams); // Lists all for Admin, published-only for User
 router.get('/completed', getCompletedExams);
 router.get('/submissions', authorizeRoles('admin'), getAllSubmissions);
-router.delete('/submissions/:id', authorizeRoles('admin'), deleteSubmission);
-router.get('/:id', getSingleExam); // Retrieves full for Admin, published-only stripped for User
 router.post('/submit', authorizeRoles('user', 'admin'), submitExam); // User takes/submits exam
-
-// Admin Only Routes
 router.post('/', authorizeRoles('admin'), createExam);
+
+// Specific nested parameter routes
+router.delete('/submissions/:id', authorizeRoles('admin'), deleteSubmission);
+
+// Dynamic Parameterized routes (MUST come after all fixed paths to prevent collision)
+router.get('/:id', getSingleExam); // Retrieves full for Admin, published-only stripped for User
 router.put('/:id', authorizeRoles('admin'), updateExam);
 router.delete('/:id', authorizeRoles('admin'), deleteExam);
 router.patch('/:id/publish', authorizeRoles('admin'), publishExam);

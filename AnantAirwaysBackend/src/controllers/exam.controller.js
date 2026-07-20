@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Exam = require('../models/exam.model');
 const Result = require('../models/result.model');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../utils/errors');
@@ -72,6 +73,10 @@ const getAllExams = asyncHandler(async (req, res, next) => {
  * Users get details only if published, and correctAnswers are stripped.
  */
 const getSingleExam = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return next(new NotFoundError('Exam not found'));
+  }
+
   const exam = await Exam.findById(req.params.id).populate('createdBy', 'anantEmail userEmail');
 
   if (!exam) {
@@ -100,6 +105,10 @@ const getSingleExam = asyncHandler(async (req, res, next) => {
  * Update Exam (Admin Only)
  */
 const updateExam = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return next(new NotFoundError('Exam not found'));
+  }
+
   const { title, description, durationInMinutes, questions, isPublished } = req.body;
 
   const exam = await Exam.findById(req.params.id);
@@ -126,6 +135,10 @@ const updateExam = asyncHandler(async (req, res, next) => {
  * Delete Exam (Admin Only)
  */
 const deleteExam = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return next(new NotFoundError('Exam not found'));
+  }
+
   const exam = await Exam.findByIdAndDelete(req.params.id);
 
   if (!exam) {
@@ -139,6 +152,10 @@ const deleteExam = asyncHandler(async (req, res, next) => {
  * Publish Exam (Admin Only)
  */
 const publishExam = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return next(new NotFoundError('Exam not found'));
+  }
+
   const { isPublished } = req.body;
 
   const exam = await Exam.findById(req.params.id);
@@ -167,6 +184,10 @@ const submitExam = asyncHandler(async (req, res, next) => {
 
   if (!examId || !answers || !Array.isArray(answers)) {
     return next(new ValidationError('examId and answers array are required'));
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(examId)) {
+    return next(new ValidationError('Invalid Exam ID format'));
   }
 
   // Fetch exam
@@ -294,6 +315,10 @@ const getAllSubmissions = asyncHandler(async (req, res, next) => {
  * Delete Submission (Admin Only)
  */
 const deleteSubmission = asyncHandler(async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return next(new NotFoundError('Submission not found'));
+  }
+
   const submission = await Result.findByIdAndDelete(req.params.id);
 
   if (!submission) {

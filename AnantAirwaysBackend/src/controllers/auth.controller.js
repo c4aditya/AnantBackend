@@ -46,15 +46,16 @@ const sendTokenResponse = (user, statusCode, message, res) => {
  * Public or admin setup endpoint
  */
 const createAdmin = asyncHandler(async (req, res, next) => {
-  const { anantEmail, password , userPhoneNumber} = req.body;
+  const { anantEmail, password, userEmail, userPhoneNumber } = req.body;
 
-  if (!anantEmail || !password ) {
-    return next(new ValidationError('All fields (anantEmail, password, userEmail, userPhoneNumber) are required'));
+  if (!anantEmail || !password) {
+    return next(new ValidationError('All fields (anantEmail, password, userPhoneNumber) are required'));
   }
 
   // Create admin user
   const admin = await User.create({
     anantEmail,
+    userEmail: userEmail || anantEmail,
     password,  
     userPhoneNumber, 
     role: 'admin'

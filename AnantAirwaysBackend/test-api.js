@@ -305,6 +305,38 @@ const runTests = async () => {
     }
     console.log('✓ Grading math validated correctly.');
 
+    // 14. Admin fetches candidate submissions
+    console.log('\nTest 14: Admin fetching candidate submissions...');
+    const submissionsRes = await fetch(`${BASE_URL}/exams/submissions`, {
+      headers: { 'Cookie': adminCookie }
+    });
+    const submissionsData = await submissionsRes.json();
+    if (submissionsRes.status !== 200 || !submissionsData.success) {
+      throw new Error(`Admin fetch submissions failed: ${JSON.stringify(submissionsData)}`);
+    }
+    const submissionsList = submissionsData.data.submissions;
+    if (!Array.isArray(submissionsList) || submissionsList.length !== 1) {
+      throw new Error(`Expected 1 submission in results, got: ${submissionsList.length}`);
+    }
+    const sub = submissionsList[0];
+    console.log('✓ Admin successfully retrieved candidate submission:');
+    console.log('  Candidate Email:', sub.userEmail);
+    console.log('  Exam Name:', sub.examName);
+    console.log('  Marks Obtained:', sub.marksObtained, '/', sub.totalMarks);
+    console.log('  Percentage:', sub.percentage + '%');
+
+    // 15. Admin deletes a submission
+    console.log('\nTest 15: Admin deleting candidate submission...');
+    const deleteSubRes = await fetch(`${BASE_URL}/exams/submissions/${sub._id}`, {
+      method: 'DELETE',
+      headers: { 'Cookie': adminCookie }
+    });
+    const deleteSubData = await deleteSubRes.json();
+    if (deleteSubRes.status !== 200 || !deleteSubData.success) {
+      throw new Error(`Delete submission failed: ${JSON.stringify(deleteSubData)}`);
+    }
+    console.log('✓ Candidate submission deleted successfully by Admin.');
+
     // Clean up
     console.log('\n--- ALL INTEGRATION TESTS PASSED SUCCESSFULY ---');
     cleanup(0);

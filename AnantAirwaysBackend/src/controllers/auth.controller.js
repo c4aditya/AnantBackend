@@ -244,6 +244,69 @@ const deleteUser = asyncHandler(async (req, res, next) => {
   return sendResponse(res, 200, 'User deleted successfully');
 });
 
+/**
+ * Forgot Password - Verify if user email exists
+ */
+const forgotPassword = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return next(new ValidationError('Email is required'));
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // Search user matching either anantEmail or userEmail
+  const user = await User.findOne({
+    $or: [
+      { anantEmail: normalizedEmail },
+      { userEmail: normalizedEmail }
+    ]
+  });
+
+  if (!user) {
+    return next(new ValidationError('No account found with this email address.'));
+  }
+
+  return sendResponse(res, 200, 'User verified successfully', {
+    email: user.anantEmail || user.userEmail
+  });
+});
+
+/**
+ * Reset Password - Update password for verified user
+ */
+const resetPassword = asyncHandler(async (req, res, next) => {
+  const { email, newPassword } = req.body;
+
+  if (!email || !newPassword) {
+    return next(new ValidationError('Email and new password are required'));
+  }
+
+  if (newPassword.length < 6) {
+    return next(new ValidationError('Password must be at least 6 characters long'));
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const user = await User.findOne({
+    $or: [
+      { anantEmail: normalizedEmail },
+      { userEmail: normalizedEmail }
+    ]
+  }).select('+password');
+
+  if (!user) {
+    return next(new NotFoundError('User not found. Please verify your email and try again.'));
+  }
+
+  // Update password field - userSchema pre('save') hook will automatically hash the new password
+  user.password = newPassword;
+  await user.save();
+
+  return sendResponse(res, 200, 'Password updated successfully. You can now log in with your new password.');
+});
+
 module.exports = {
   createAdmin,
   addUser,
@@ -252,5 +315,8 @@ module.exports = {
   logout,
   getCurrentUser,
   getAllUsers,
-  deleteUser
+  deleteUser,
+  forgotPassword,
+  resetPassword
 };
+

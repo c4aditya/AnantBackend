@@ -11,10 +11,11 @@ const app = express();
 const allowedOrigins = [
   'https://anantairways.in',
   'https://www.anantairways.in',
+  'https://api.anantairways.in',
   'http://localhost:5173',
   'http://localhost:5173/',
   'http://localhost:3000',
-  'http://localhost:5174'
+  'http://localhost:5400'
 ];
 
 const corsOptions = {

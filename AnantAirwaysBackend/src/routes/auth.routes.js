@@ -8,7 +8,9 @@ const {
   logout,
   getCurrentUser,
   getAllUsers,
-  deleteUser
+  deleteUser,
+  forgotPassword,
+  resetPassword
 } = require('../controllers/auth.controller');
 const { protect, authorizeRoles } = require('../middlewares/auth.middleware');
 
@@ -17,6 +19,8 @@ router.post('/create-admin', createAdmin);
 router.post('/login-user', loginUser);
 router.post('/login-admin', loginAdmin);
 router.post('/logout', logout);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
 
 // Protected Routes (General User & Admin)
 router.get('/me', protect, getCurrentUser);

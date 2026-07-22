@@ -11,9 +11,11 @@ const app = express();
 const allowedOrigins = [
   'https://anantairways.in',
   'https://www.anantairways.in',
+  'http://anantairways.in',
+  'http://www.anantairways.in',
   'https://api.anantairways.in',
+  'http://api.anantairways.in',
   'http://localhost:5173',
-  'http://localhost:5173/',
   'http://localhost:3000',
   'http://localhost:5400'
 ];
@@ -23,18 +25,18 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     const normalizedOrigin = origin.replace(/\/$/, '');
     const isAllowed = allowedOrigins.some((o) => o.replace(/\/$/, '') === normalizedOrigin);
-    if (isAllowed) {
+    if (isAllowed || normalizedOrigin.endsWith('.anantairways.in')) {
       return callback(null, true);
     }
-    return callback(null, true); // Allow configured origins
+    return callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cookie']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cookie', 'Origin'],
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
 
 // Middleware: Request logging for server terminal debugging
 app.use((req, res, next) => {

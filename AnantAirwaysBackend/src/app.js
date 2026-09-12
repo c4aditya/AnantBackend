@@ -3,6 +3,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const authRoutes = require('./routes/auth.routes');
 const examRoutes = require('./routes/exam.routes');
+const flightRoutes = require('./routes/flight.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const { NotFoundError } = require('./utils/errors');
 
@@ -48,6 +49,7 @@ app.use(cookieParser());
 // API Route Definitions
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/exams', examRoutes);
+app.use('/api/v1/flights', flightRoutes);
 
 // Health Check Route
 app.get('/health', (req, res) => {

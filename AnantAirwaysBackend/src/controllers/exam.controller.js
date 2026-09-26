@@ -42,29 +42,16 @@ const createExamUser = asyncHandler(async (req, res, next) => {
     phone: cleanPhone,
     examToken: token,
     examTokenExpiresAt: expiresAt,
-    examStatus: 'pending'
+    examStatus: 'pending',
+    emailSent: false
   });
 
   // Construct Exam URL
   const rawBaseUrl = process.env.FRONTEND_URL || 'https://anantairways.in';
   const baseUrl = rawBaseUrl.replace(/\/+$/, '');
   const examUrl = `${baseUrl}/exam/${token}`;
-  const examName = 'Aviation Courses Examination';
 
-  // Send Real Email via Brevo SMTP (safely handled so DB creation succeeds regardless)
-  try {
-    await sendExamLinkEmail(
-      examUser.email,
-      examUser.name || examUser.email,
-      examUrl,
-      examName,
-      expiresAt
-    );
-  } catch (emailErr) {
-    console.error('Failed to send exam link email on user creation:', emailErr.message);
-  }
-
-  return sendResponse(res, 201, 'Exam user created and exam link sent successfully', {
+  return sendResponse(res, 201, 'Exam user created successfully', {
     examUser,
     examUrl,
     token,
@@ -143,16 +130,25 @@ const sendExamLink = asyncHandler(async (req, res, next) => {
   const examName = 'Aviation Courses Examination';
 
   // Send Real Email via Brevo SMTP (safely handled so link state updates in DB regardless)
+  let emailSentSuccessfully = false;
   try {
-    await sendExamLinkEmail(
+    const emailResult = await sendExamLinkEmail(
       examUser.email,
       examUser.name || examUser.email,
       examUrl,
       examName,
       expiresAt
     );
+    if (emailResult && emailResult.success) {
+      emailSentSuccessfully = true;
+    }
   } catch (emailErr) {
     console.error('Failed to send exam link email:', emailErr.message);
+  }
+
+  if (emailSentSuccessfully) {
+    examUser.emailSent = true;
+    await examUser.save();
   }
 
   return sendResponse(res, 200, 'Exam link sent successfully', {

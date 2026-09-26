@@ -52,6 +52,10 @@ const examUserSchema = new mongoose.Schema(
     resultSent: {
       type: Boolean,
       default: false
+    },
+    emailSent: {
+      type: Boolean,
+      default: false
     }
   },
   {

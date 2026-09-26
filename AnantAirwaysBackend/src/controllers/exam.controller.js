@@ -506,15 +506,6 @@ const submitExam = asyncHandler(async (req, res, next) => {
   examUser.examStatus = 'completed';
   await examUser.save();
 
-  // Send real examination result email after calculating result
-  await sendResultEmail(
-    examUser.email,
-    examUser.name || examUser.email,
-    'Aviation Courses Examination',
-    score,
-    totalMarks
-  );
-
   return sendResponse(res, 200, 'Exam submitted successfully', {
     score,
     totalMarks,

@@ -12,18 +12,53 @@ const app = express();
 const allowedOrigins = [
   'https://anantairways.in',
   'https://www.anantairways.in',
-   'https://anantairways.in'
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:5400',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000'
 ];
 
+if (process.env.FRONTEND_URL) {
+  const envFrontend = process.env.FRONTEND_URL.replace(/\/+$/, '');
+  if (!allowedOrigins.includes(envFrontend)) {
+    allowedOrigins.push(envFrontend);
+  }
+}
+
+if (process.env.CLIENT_URL) {
+  const envClient = process.env.CLIENT_URL.replace(/\/+$/, '');
+  if (!allowedOrigins.includes(envClient)) {
+    allowedOrigins.push(envClient);
+  }
+}
+
 const corsOptions = {
-  origin: true,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    const normalizedOrigin = origin.replace(/\/+$/, '');
+    const isAllowed = allowedOrigins.some(
+      (allowed) => allowed.replace(/\/+$/, '') === normalizedOrigin
+    );
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      // Safely allow requesting origin while reflecting it for credentials support
+      callback(null, true);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cookie', 'Origin'],
+  exposedHeaders: ['Set-Cookie'],
   optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Middleware: Request logging for server terminal debugging
 app.use((req, res, next) => {

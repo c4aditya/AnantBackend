@@ -46,7 +46,7 @@ const createExamUser = asyncHandler(async (req, res, next) => {
   });
 
   // Construct Exam URL
-  const rawBaseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const rawBaseUrl = process.env.FRONTEND_URL || 'https://anantairways.in';
   const baseUrl = rawBaseUrl.replace(/\/+$/, '');
   const examUrl = `${baseUrl}/exam/${token}`;
   const examName = 'Aviation Courses Examination';
@@ -132,7 +132,7 @@ const sendExamLink = asyncHandler(async (req, res, next) => {
   await examUser.save();
 
   // Construct Exam URL
-  const rawBaseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const rawBaseUrl = process.env.FRONTEND_URL || 'https://anantairways.in';
   const baseUrl = rawBaseUrl.replace(/\/+$/, '');
   const examUrl = `${baseUrl}/exam/${token}`;
   const examName = 'Aviation Courses Examination';

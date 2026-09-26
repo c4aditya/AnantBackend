@@ -359,15 +359,15 @@ const checkExamToken = asyncHandler(async (req, res, next) => {
  */
 const startExam = asyncHandler(async (req, res, next) => {
   const cleanToken = req.params.token ? req.params.token.trim().toLowerCase() : '';
-  const { email, phone, name } = req.body;
+  const { email } = req.body;
 
   if (!cleanToken) {
     console.warn('⚠️ [START EXAM FAILED] Empty token string provided');
     return next(new NotFoundError('Invalid exam link'));
   }
 
-  if (!email || !name) {
-    return next(new ValidationError('Email and Name are required to start the exam.'));
+  if (!email) {
+    return next(new ValidationError('Email is required to start the exam.'));
   }
 
   // Step 1 & 2: Find user using token
@@ -399,12 +399,11 @@ const startExam = asyncHandler(async (req, res, next) => {
     return next(new AppError('This exam has already been submitted.', 400));
   }
 
-  // Step 5: Check email and name match stored details
+  // Step 5: Check email match stored details
   const isEmailMatch = examUser.email.toLowerCase().trim() === email.toLowerCase().trim();
-  const isNameMatch = examUser.name.toLowerCase().trim().replace(/\s+/g, ' ') === name.toLowerCase().trim().replace(/\s+/g, ' ');
 
-  if (!isEmailMatch || !isNameMatch) {
-    return next(new AppError('User details do not match the exam invitation.', 400));
+  if (!isEmailMatch) {
+    return next(new AppError('User email does not match the exam invitation.', 400));
   }
 
   // Step 6: Immediately return questions WITHOUT correctAnswer immediately
@@ -436,7 +435,7 @@ const startExam = asyncHandler(async (req, res, next) => {
  */
 const submitExam = asyncHandler(async (req, res, next) => {
   const cleanToken = req.params.token ? req.params.token.trim().toLowerCase() : '';
-  const { email, phone, name, answers } = req.body;
+  const { email, answers } = req.body;
 
   if (!cleanToken) {
     console.warn('⚠️ [SUBMIT EXAM FAILED] Empty token string provided');
@@ -474,13 +473,12 @@ const submitExam = asyncHandler(async (req, res, next) => {
     return next(new AppError('This exam has already been submitted.', 400));
   }
 
-  // Verify details match
-  if (email && name) {
+  // Verify email match
+  if (email) {
     const isEmailMatch = examUser.email.toLowerCase().trim() === email.toLowerCase().trim();
-    const isNameMatch = examUser.name.toLowerCase().trim().replace(/\s+/g, ' ') === name.toLowerCase().trim().replace(/\s+/g, ' ');
 
-    if (!isEmailMatch || !isNameMatch) {
-      return next(new AppError('User details do not match the exam invitation.', 400));
+    if (!isEmailMatch) {
+      return next(new AppError('User email does not match the exam invitation.', 400));
     }
   }
 

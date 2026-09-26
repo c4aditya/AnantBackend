@@ -33,7 +33,7 @@ const createExamUser = asyncHandler(async (req, res, next) => {
   }
 
   // Generate cryptographically secure random token & fresh 24h expiry from link generation time
-  const token = crypto.randomBytes(32).toString('hex');
+  const token = crypto.randomBytes(32).toString('hex').toLowerCase();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const examUser = await ExamUser.create({
@@ -108,7 +108,7 @@ const deleteExamUser = asyncHandler(async (req, res, next) => {
 /**
  * Send Exam Link (Admin Only)
  * POST /api/v1/exam/users/:id/send-link
- * Generates secure random 32-byte hex token, sets 24-hour expiry, and emails the link.
+ * Reuses existing active valid token or generates fresh 24h token if expired/missing.
  */
 const sendExamLink = asyncHandler(async (req, res, next) => {
   const examUser = await ExamUser.findById(req.params.id);
@@ -120,16 +120,21 @@ const sendExamLink = asyncHandler(async (req, res, next) => {
     return next(new ValidationError('Cannot send exam link for an already completed exam.'));
   }
 
-  // Generate cryptographically secure random token
-  const token = crypto.randomBytes(32).toString('hex');
+  let token = examUser.examToken ? examUser.examToken.trim().toLowerCase() : null;
+  let expiresAt = examUser.examTokenExpiresAt;
+  const nowMs = Date.now();
+  const isTokenActive = token && expiresAt && new Date(expiresAt).getTime() > nowMs && examUser.examStatus === 'pending';
 
-  // Set 24-hour expiry from generation time
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  if (!isTokenActive) {
+    // Generate new secure random token & 24h expiry if token is missing or expired
+    token = crypto.randomBytes(32).toString('hex').toLowerCase();
+    expiresAt = new Date(nowMs + 24 * 60 * 60 * 1000);
 
-  examUser.examToken = token;
-  examUser.examTokenExpiresAt = expiresAt;
-  examUser.examStatus = 'pending';
-  await examUser.save();
+    examUser.examToken = token;
+    examUser.examTokenExpiresAt = expiresAt;
+    examUser.examStatus = 'pending';
+    await examUser.save();
+  }
 
   // Construct Exam URL
   const rawBaseUrl = process.env.FRONTEND_URL || 'https://anantairways.in';
@@ -302,23 +307,26 @@ const deleteQuestion = asyncHandler(async (req, res, next) => {
  * Validates token existence, 24-hour expiry, completion status.
  */
 const checkExamToken = asyncHandler(async (req, res, next) => {
-  const cleanToken = req.params.token ? req.params.token.trim() : '';
+  const cleanToken = req.params.token ? req.params.token.trim().toLowerCase() : '';
 
   if (!cleanToken) {
+    console.warn('⚠️ [CHECK EXAM TOKEN FAILED] Empty token string provided');
     return next(new NotFoundError('Invalid exam link'));
   }
 
   const examUser = await ExamUser.findOne({ examToken: cleanToken });
 
   if (!examUser) {
+    console.warn(`⚠️ [CHECK EXAM TOKEN FAILED] No user document found matching token: "${cleanToken}"`);
     return next(new NotFoundError('Invalid exam link'));
   }
 
   // 24-hour expiry check
-  const now = new Date();
-  const expiresAt = examUser.examTokenExpiresAt ? new Date(examUser.examTokenExpiresAt) : null;
+  const nowMs = Date.now();
+  const expiresAtMs = examUser.examTokenExpiresAt ? new Date(examUser.examTokenExpiresAt).getTime() : 0;
 
-  if (expiresAt && now.getTime() > expiresAt.getTime()) {
+  if (expiresAtMs > 0 && nowMs > expiresAtMs) {
+    console.warn(`⚠️ [CHECK EXAM TOKEN EXPIRED] User: ${examUser.email}, ExpiresAt: ${examUser.examTokenExpiresAt}, Current: ${new Date()}`);
     if (examUser.examStatus !== 'completed') {
       examUser.examStatus = 'expired';
       await examUser.save();
@@ -327,13 +335,16 @@ const checkExamToken = asyncHandler(async (req, res, next) => {
   }
 
   if (examUser.examStatus === 'expired') {
+    console.warn(`⚠️ [CHECK EXAM TOKEN EXPIRED STATUS] User: ${examUser.email}`);
     return next(new AppError('Exam link has expired', 400));
   }
 
   if (examUser.examStatus === 'completed') {
+    console.log(`ℹ️ [CHECK EXAM TOKEN ALREADY COMPLETED] User: ${examUser.email}`);
     return next(new AppError('This exam has already been submitted.', 400));
   }
 
+  console.log(`✅ [CHECK EXAM TOKEN SUCCESS] Valid active token for user: ${examUser.email}`);
   return sendResponse(res, 200, 'Exam link is valid', {
     valid: true
   });
@@ -347,32 +358,35 @@ const checkExamToken = asyncHandler(async (req, res, next) => {
  * Step 2: Check user exists.
  * Step 3: Check token expiry.
  * Step 4: Check exam status.
- * Step 5: Check email, phone, and name match stored details.
+ * Step 5: Check email and name match stored details.
  * Step 6: Return questions WITHOUT correctAnswer immediately.
  */
 const startExam = asyncHandler(async (req, res, next) => {
-  const cleanToken = req.params.token ? req.params.token.trim() : '';
+  const cleanToken = req.params.token ? req.params.token.trim().toLowerCase() : '';
   const { email, phone, name } = req.body;
 
   if (!cleanToken) {
+    console.warn('⚠️ [START EXAM FAILED] Empty token string provided');
     return next(new NotFoundError('Invalid exam link'));
   }
 
-  if (!email || !phone || !name) {
-    return next(new ValidationError('Email, Phone Number, and Name are required to start the exam.'));
+  if (!email || !name) {
+    return next(new ValidationError('Email and Name are required to start the exam.'));
   }
 
   // Step 1 & 2: Find user using token
   const examUser = await ExamUser.findOne({ examToken: cleanToken });
   if (!examUser) {
+    console.warn(`⚠️ [START EXAM FAILED] No user document found matching token: "${cleanToken}"`);
     return next(new NotFoundError('Invalid exam link'));
   }
 
   // Step 3: Check 24-hour token expiry
-  const now = new Date();
-  const expiresAt = examUser.examTokenExpiresAt ? new Date(examUser.examTokenExpiresAt) : null;
+  const nowMs = Date.now();
+  const expiresAtMs = examUser.examTokenExpiresAt ? new Date(examUser.examTokenExpiresAt).getTime() : 0;
 
-  if (expiresAt && now.getTime() > expiresAt.getTime()) {
+  if (expiresAtMs > 0 && nowMs > expiresAtMs) {
+    console.warn(`⚠️ [START EXAM EXPIRED] User: ${examUser.email}, ExpiresAt: ${examUser.examTokenExpiresAt}, Current: ${new Date()}`);
     if (examUser.examStatus !== 'completed') {
       examUser.examStatus = 'expired';
       await examUser.save();
@@ -407,6 +421,7 @@ const startExam = asyncHandler(async (req, res, next) => {
     marks: q.marks
   }));
 
+  console.log(`✅ [START EXAM SUCCESS] User ${examUser.email} logged in. Exam started.`);
   return sendResponse(res, 200, 'Login successful. Starting exam...', {
     user: {
       name: examUser.name,
@@ -424,10 +439,11 @@ const startExam = asyncHandler(async (req, res, next) => {
  * Evaluates score server-side, saves results, invalidates token (examToken = null), and sends confirmation email.
  */
 const submitExam = asyncHandler(async (req, res, next) => {
-  const cleanToken = req.params.token ? req.params.token.trim() : '';
+  const cleanToken = req.params.token ? req.params.token.trim().toLowerCase() : '';
   const { email, phone, name, answers } = req.body;
 
   if (!cleanToken) {
+    console.warn('⚠️ [SUBMIT EXAM FAILED] Empty token string provided');
     return next(new NotFoundError('Invalid exam link'));
   }
 
@@ -437,14 +453,16 @@ const submitExam = asyncHandler(async (req, res, next) => {
 
   const examUser = await ExamUser.findOne({ examToken: cleanToken });
   if (!examUser) {
+    console.warn(`⚠️ [SUBMIT EXAM FAILED] No user document found matching token: "${cleanToken}"`);
     return next(new NotFoundError('Invalid exam link'));
   }
 
   // Check 24-hour expiry
-  const now = new Date();
-  const expiresAt = examUser.examTokenExpiresAt ? new Date(examUser.examTokenExpiresAt) : null;
+  const nowMs = Date.now();
+  const expiresAtMs = examUser.examTokenExpiresAt ? new Date(examUser.examTokenExpiresAt).getTime() : 0;
 
-  if (expiresAt && now.getTime() > expiresAt.getTime()) {
+  if (expiresAtMs > 0 && nowMs > expiresAtMs) {
+    console.warn(`⚠️ [SUBMIT EXAM EXPIRED] User: ${examUser.email}, ExpiresAt: ${examUser.examTokenExpiresAt}, Current: ${new Date()}`);
     if (examUser.examStatus !== 'completed') {
       examUser.examStatus = 'expired';
       await examUser.save();

@@ -25,7 +25,8 @@ const examUserSchema = new mongoose.Schema(
     },
     examToken: {
       type: String,
-      default: null
+      default: null,
+      index: true
     },
     examTokenExpiresAt: {
       type: Date,

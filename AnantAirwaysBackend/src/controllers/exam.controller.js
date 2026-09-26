@@ -1,357 +1,531 @@
-const mongoose = require('mongoose');
-const Exam = require('../models/exam.model');
-const Result = require('../models/result.model');
-const { ValidationError, NotFoundError, ForbiddenError } = require('../utils/errors');
+const crypto = require('crypto');
+const ExamUser = require('../models/examUser.model');
+const ExamQuestion = require('../models/examQuestion.model');
+const { ValidationError, NotFoundError, ForbiddenError, AppError } = require('../utils/errors');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendResponse } = require('../utils/apiResponse');
+const { sendExamLinkEmail, sendSubmissionEmail, sendResultEmail } = require('../utils/email.service');
+
+// ==========================================
+// ADMIN CONTROLLERS - EXAM USERS
+// ==========================================
 
 /**
- * Create Exam (Admin Only)
+ * Add Exam User (Admin Only)
+ * POST /api/v1/exam/users
+ * Stores User Email, Phone Number, Name, generates 24h token, and sends Exam Link Email.
  */
-const createExam = asyncHandler(async (req, res, next) => {
-  const { title, description, durationInMinutes, questions } = req.body;
+const createExamUser = asyncHandler(async (req, res, next) => {
+  const { email, phone, name } = req.body;
 
-  if (!title || !durationInMinutes || !questions || !Array.isArray(questions) || questions.length === 0) {
-    return next(new ValidationError('Title, durationInMinutes, and a non-empty questions array are required'));
+  if (!email || !phone || !name) {
+    return next(new ValidationError('User Email, Phone Number, and Name are required'));
   }
 
-  // Create Exam (pre-save hook will compute totalMarks)
-  const exam = new Exam({
-    title,
-    description,
-    durationInMinutes,
-    questions,
-    createdBy: req.user._id
+  const cleanEmail = email.toLowerCase().trim();
+  const cleanPhone = phone.trim();
+  const cleanName = name.trim();
+
+  // Check for duplicate email
+  const existingUser = await ExamUser.findOne({ email: cleanEmail });
+  if (existingUser) {
+    return next(new AppError('An exam user with this email address already exists.', 409));
+  }
+
+  // Generate cryptographically secure random token & fresh 24h expiry from link generation time
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  const examUser = await ExamUser.create({
+    name: cleanName,
+    email: cleanEmail,
+    phone: cleanPhone,
+    examToken: token,
+    examTokenExpiresAt: expiresAt,
+    examStatus: 'pending'
   });
 
-  await exam.save();
+  // Construct Exam URL
+  const rawBaseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const baseUrl = rawBaseUrl.replace(/\/+$/, '');
+  const examUrl = `${baseUrl}/exam/${token}`;
+  const examName = 'Aviation Courses Examination';
 
-  // Populate creator info
-  await exam.populate('createdBy', 'anantEmail userEmail');
+  // Send Real Email via Brevo SMTP (safely handled so DB creation succeeds regardless)
+  try {
+    await sendExamLinkEmail(
+      examUser.email,
+      examUser.name || examUser.email,
+      examUrl,
+      examName,
+      expiresAt
+    );
+  } catch (emailErr) {
+    console.error('Failed to send exam link email on user creation:', emailErr.message);
+  }
 
-  return sendResponse(res, 201, 'Exam created successfully', { exam });
+  return sendResponse(res, 201, 'Exam user created and exam link sent successfully', {
+    examUser,
+    examUrl,
+    token,
+    expiresAt
+  });
 });
 
 /**
- * Get All Exams
- * Admin gets all exams.
- * Users get only published exams.
+ * Get All Exam Users (Admin Only)
+ * GET /api/v1/exam/users
  */
-const getAllExams = asyncHandler(async (req, res, next) => {
-  let query = {};
-
-  // If role is user, only fetch published exams
-  if (req.user.role === 'user') {
-    query.isPublished = true;
-  }
-
-  // Fetch and populate creator info
-  const exams = await Exam.find(query)
-    .populate('createdBy', 'anantEmail userEmail')
-    .sort({ createdAt: -1 });
-
-  // If user is a student/user, strip out correct answers from all exams and questions to prevent cheating
-  if (req.user.role === 'user') {
-    const sanitizedExams = exams.map((exam) => {
-      const sanitized = exam.toObject();
-      sanitized.questions = sanitized.questions.map((q) => {
-        const { correctAnswer, ...rest } = q;
-        return rest;
-      });
-      return sanitized;
-    });
-
-    return sendResponse(res, 200, 'Published exams retrieved successfully', { exams: sanitizedExams });
-  }
-
-  return sendResponse(res, 200, 'All exams retrieved successfully', { exams });
+const getExamUsers = asyncHandler(async (req, res, next) => {
+  const examUsers = await ExamUser.find({}).sort({ createdAt: -1 });
+  return sendResponse(res, 200, 'Exam users retrieved successfully', { examUsers });
 });
 
 /**
- * Get Single Exam
- * Admin gets all info.
- * Users get details only if published, and correctAnswers are stripped.
+ * Get Single Exam User (Admin Only)
+ * GET /api/v1/exam/users/:id
  */
-const getSingleExam = asyncHandler(async (req, res, next) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-    return next(new NotFoundError('Exam not found'));
+const getSingleExamUser = asyncHandler(async (req, res, next) => {
+  const examUser = await ExamUser.findById(req.params.id);
+  if (!examUser) {
+    return next(new NotFoundError('Exam user not found'));
+  }
+  return sendResponse(res, 200, 'Exam user retrieved successfully', { examUser });
+});
+
+/**
+ * Delete Exam User (Admin Only)
+ * DELETE /api/v1/exam/users/:id
+ */
+const deleteExamUser = asyncHandler(async (req, res, next) => {
+  const examUser = await ExamUser.findByIdAndDelete(req.params.id);
+  if (!examUser) {
+    return next(new NotFoundError('Exam user not found'));
+  }
+  return sendResponse(res, 200, 'Exam user deleted successfully');
+});
+
+/**
+ * Send Exam Link (Admin Only)
+ * POST /api/v1/exam/users/:id/send-link
+ * Generates secure random 32-byte hex token, sets 24-hour expiry, and emails the link.
+ */
+const sendExamLink = asyncHandler(async (req, res, next) => {
+  const examUser = await ExamUser.findById(req.params.id);
+  if (!examUser) {
+    return next(new NotFoundError('Exam user not found'));
   }
 
-  const exam = await Exam.findById(req.params.id).populate('createdBy', 'anantEmail userEmail');
-
-  if (!exam) {
-    return next(new NotFoundError('Exam not found'));
+  if (examUser.examStatus === 'completed') {
+    return next(new ValidationError('Cannot send exam link for an already completed exam.'));
   }
 
-  // If user role is 'user', check if published and strip correct answers
-  if (req.user.role === 'user') {
-    if (!exam.isPublished) {
-      return next(new ForbiddenError('You do not have access to this unpublished exam'));
+  // Generate cryptographically secure random token
+  const token = crypto.randomBytes(32).toString('hex');
+
+  // Set 24-hour expiry from generation time
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  examUser.examToken = token;
+  examUser.examTokenExpiresAt = expiresAt;
+  examUser.examStatus = 'pending';
+  await examUser.save();
+
+  // Construct Exam URL
+  const rawBaseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const baseUrl = rawBaseUrl.replace(/\/+$/, '');
+  const examUrl = `${baseUrl}/exam/${token}`;
+  const examName = 'Aviation Courses Examination';
+
+  // Send Real Email via Brevo SMTP (safely handled so link state updates in DB regardless)
+  try {
+    await sendExamLinkEmail(
+      examUser.email,
+      examUser.name || examUser.email,
+      examUrl,
+      examName,
+      expiresAt
+    );
+  } catch (emailErr) {
+    console.error('Failed to send exam link email:', emailErr.message);
+  }
+
+  return sendResponse(res, 200, 'Exam link sent successfully', {
+    examUser,
+    examUrl,
+    token,
+    expiresAt
+  });
+});
+
+/**
+ * Get Exam Results (Admin Only)
+ * GET /api/v1/exam/results
+ */
+const getExamResults = asyncHandler(async (req, res, next) => {
+  const results = await ExamUser.find({ examStatus: 'completed' }).sort({ submittedAt: -1 });
+  return sendResponse(res, 200, 'Exam results retrieved successfully', { results });
+});
+
+/**
+ * Send Result Email (Admin Only)
+ * POST /api/v1/exam/results/:id/send-result
+ */
+const sendResultEmailToCandidate = asyncHandler(async (req, res, next) => {
+  const examUser = await ExamUser.findById(req.params.id);
+  if (!examUser) {
+    return next(new NotFoundError('Exam user not found'));
+  }
+
+  if (examUser.examStatus !== 'completed') {
+    return next(new ValidationError('Cannot send result for an uncompleted exam.'));
+  }
+
+  const examName = 'Aviation Courses Examination';
+  await sendResultEmail(
+    examUser.email,
+    examUser.name || examUser.email,
+    examName,
+    examUser.score,
+    examUser.totalMarks
+  );
+
+  examUser.resultSent = true;
+  await examUser.save();
+
+  return sendResponse(res, 200, 'Exam result email sent successfully', { examUser });
+});
+
+
+// ==========================================
+// ADMIN CONTROLLERS - QUESTION MANAGEMENT
+// ==========================================
+
+/**
+ * Create Question (Admin Only)
+ * POST /api/v1/exam/questions
+ */
+const createQuestion = asyncHandler(async (req, res, next) => {
+  const { question, options, correctAnswer, marks, type } = req.body;
+
+  if (!question || !question.trim()) {
+    return next(new ValidationError('Question statement is required'));
+  }
+
+  const currentCount = await ExamQuestion.countDocuments();
+  if (currentCount >= 25) {
+    return next(new AppError('Maximum limit of 25 questions per exam reached (5 Written + 20 MCQ).', 400));
+  }
+
+  const nextPos = currentCount + 1;
+  const isWritten = nextPos <= 5;
+  const questionType = isWritten ? 'written' : 'mcq';
+
+  if (!isWritten) {
+    if (!options || !Array.isArray(options) || options.filter((o) => o.trim() !== '').length < 2 || !correctAnswer) {
+      return next(new ValidationError('MCQ questions require at least 2 options and a correct answer'));
     }
-
-    const sanitizedExam = exam.toObject();
-    sanitizedExam.questions = sanitizedExam.questions.map((q) => {
-      const { correctAnswer, ...rest } = q;
-      return rest;
-    });
-
-    return sendResponse(res, 200, 'Exam retrieved successfully', { exam: sanitizedExam });
   }
 
-  return sendResponse(res, 200, 'Exam retrieved successfully', { exam });
+  const newQuestion = await ExamQuestion.create({
+    question: question.trim(),
+    type: questionType,
+    options: isWritten ? [] : options.filter((o) => o.trim() !== '').map((opt) => opt.trim()),
+    correctAnswer: isWritten ? '' : correctAnswer.trim(),
+    marks: marks ? Number(marks) : 1
+  });
+
+  return sendResponse(res, 201, 'Question created successfully', { question: newQuestion });
 });
 
 /**
- * Update Exam (Admin Only)
+ * Get All Questions (Admin Only - includes correctAnswer)
+ * GET /api/v1/exam/questions
  */
-const updateExam = asyncHandler(async (req, res, next) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-    return next(new NotFoundError('Exam not found'));
-  }
-
-  const { title, description, durationInMinutes, questions, isPublished } = req.body;
-
-  const exam = await Exam.findById(req.params.id);
-
-  if (!exam) {
-    return next(new NotFoundError('Exam not found'));
-  }
-
-  // Update properties if provided
-  if (title !== undefined) exam.title = title;
-  if (description !== undefined) exam.description = description;
-  if (durationInMinutes !== undefined) exam.durationInMinutes = durationInMinutes;
-  if (questions !== undefined) exam.questions = questions;
-  if (isPublished !== undefined) exam.isPublished = isPublished;
-
-  // Save the exam to trigger the pre-save Hook (recalculating totalMarks)
-  await exam.save();
-  await exam.populate('createdBy', 'anantEmail userEmail');
-
-  return sendResponse(res, 200, 'Exam updated successfully', { exam });
+const getQuestions = asyncHandler(async (req, res, next) => {
+  const questions = await ExamQuestion.find({}).sort({ createdAt: 1 });
+  return sendResponse(res, 200, 'Questions retrieved successfully', { questions });
 });
 
 /**
- * Delete Exam (Admin Only)
+ * Update Question (Admin Only)
+ * PUT /api/v1/exam/questions/:id
  */
-const deleteExam = asyncHandler(async (req, res, next) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-    return next(new NotFoundError('Exam not found'));
+const updateQuestion = asyncHandler(async (req, res, next) => {
+  const { question, options, correctAnswer, marks, type } = req.body;
+  const targetQuestion = await ExamQuestion.findById(req.params.id);
+
+  if (!targetQuestion) {
+    return next(new NotFoundError('Question not found'));
   }
 
-  const exam = await Exam.findByIdAndDelete(req.params.id);
+  if (question !== undefined && question.trim()) targetQuestion.question = question.trim();
+  if (marks !== undefined) targetQuestion.marks = Number(marks);
 
-  if (!exam) {
-    return next(new NotFoundError('Exam not found'));
+  const qType = type || targetQuestion.type || (targetQuestion.options && targetQuestion.options.length > 0 ? 'mcq' : 'written');
+  targetQuestion.type = qType;
+
+  if (qType === 'mcq') {
+    if (options !== undefined && Array.isArray(options) && options.filter((o) => o.trim() !== '').length >= 2) {
+      targetQuestion.options = options.filter((o) => o.trim() !== '').map((opt) => opt.trim());
+    }
+    if (correctAnswer !== undefined) targetQuestion.correctAnswer = correctAnswer.trim();
+  } else {
+    targetQuestion.options = [];
+    targetQuestion.correctAnswer = '';
   }
 
-  return sendResponse(res, 200, 'Exam deleted successfully');
+  await targetQuestion.save();
+  return sendResponse(res, 200, 'Question updated successfully', { question: targetQuestion });
 });
 
 /**
- * Publish Exam (Admin Only)
+ * Delete Question (Admin Only)
+ * DELETE /api/v1/exam/questions/:id
  */
-const publishExam = asyncHandler(async (req, res, next) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-    return next(new NotFoundError('Exam not found'));
+const deleteQuestion = asyncHandler(async (req, res, next) => {
+  const targetQuestion = await ExamQuestion.findByIdAndDelete(req.params.id);
+  if (!targetQuestion) {
+    return next(new NotFoundError('Question not found'));
+  }
+  return sendResponse(res, 200, 'Question deleted successfully');
+});
+
+
+// ==========================================
+// USER CONTROLLERS - CANDIDATE EXAM FLOW
+// ==========================================
+
+/**
+ * Check Exam Token Status (User Public Endpoint)
+ * GET /api/v1/exam/:token
+ * Validates token existence, 24-hour expiry, completion status.
+ */
+const checkExamToken = asyncHandler(async (req, res, next) => {
+  const cleanToken = req.params.token ? req.params.token.trim() : '';
+
+  if (!cleanToken) {
+    return next(new NotFoundError('Invalid exam link'));
   }
 
-  const { isPublished } = req.body;
+  const examUser = await ExamUser.findOne({ examToken: cleanToken });
 
-  const exam = await Exam.findById(req.params.id);
-
-  if (!exam) {
-    return next(new NotFoundError('Exam not found'));
+  if (!examUser) {
+    return next(new NotFoundError('Invalid exam link'));
   }
 
-  // Set the publication status (default to true if not specified)
-  exam.isPublished = isPublished !== undefined ? isPublished : true;
+  // 24-hour expiry check
+  const now = new Date();
+  const expiresAt = examUser.examTokenExpiresAt ? new Date(examUser.examTokenExpiresAt) : null;
 
-  await exam.save();
-  await exam.populate('createdBy', 'anantEmail userEmail');
+  if (expiresAt && now.getTime() > expiresAt.getTime()) {
+    if (examUser.examStatus !== 'completed') {
+      examUser.examStatus = 'expired';
+      await examUser.save();
+    }
+    return next(new AppError('Exam link has expired', 400));
+  }
 
-  const statusText = exam.isPublished ? 'published' : 'unpublished';
-  return sendResponse(res, 200, `Exam ${statusText} successfully`, { exam });
+  if (examUser.examStatus === 'expired') {
+    return next(new AppError('Exam link has expired', 400));
+  }
+
+  if (examUser.examStatus === 'completed') {
+    return next(new AppError('This exam has already been submitted.', 400));
+  }
+
+  return sendResponse(res, 200, 'Exam link is valid', {
+    valid: true
+  });
 });
 
 /**
- * Submit Exam (In-Memory Evaluation)
- * Accepts examId and answers array.
- * Calculates score in-memory, returns details, DOES NOT save to DB.
+ * Start Exam / Candidate Login (User Public Endpoint)
+ * POST /api/v1/exam/:token/start (also /verify)
+ * User submits { email, phone, name }.
+ * Step 1: Find user using exam token.
+ * Step 2: Check user exists.
+ * Step 3: Check token expiry.
+ * Step 4: Check exam status.
+ * Step 5: Check email, phone, and name match stored details.
+ * Step 6: Return questions WITHOUT correctAnswer immediately.
+ */
+const startExam = asyncHandler(async (req, res, next) => {
+  const cleanToken = req.params.token ? req.params.token.trim() : '';
+  const { email, phone, name } = req.body;
+
+  if (!cleanToken) {
+    return next(new NotFoundError('Invalid exam link'));
+  }
+
+  if (!email || !phone || !name) {
+    return next(new ValidationError('Email, Phone Number, and Name are required to start the exam.'));
+  }
+
+  // Step 1 & 2: Find user using token
+  const examUser = await ExamUser.findOne({ examToken: cleanToken });
+  if (!examUser) {
+    return next(new NotFoundError('Invalid exam link'));
+  }
+
+  // Step 3: Check 24-hour token expiry
+  const now = new Date();
+  const expiresAt = examUser.examTokenExpiresAt ? new Date(examUser.examTokenExpiresAt) : null;
+
+  if (expiresAt && now.getTime() > expiresAt.getTime()) {
+    if (examUser.examStatus !== 'completed') {
+      examUser.examStatus = 'expired';
+      await examUser.save();
+    }
+    return next(new AppError('Exam link has expired', 400));
+  }
+
+  if (examUser.examStatus === 'expired') {
+    return next(new AppError('Exam link has expired', 400));
+  }
+
+  // Step 4: Check exam status
+  if (examUser.examStatus === 'completed') {
+    return next(new AppError('This exam has already been submitted.', 400));
+  }
+
+  // Step 5: Check email and name match stored details
+  const isEmailMatch = examUser.email.toLowerCase().trim() === email.toLowerCase().trim();
+  const isNameMatch = examUser.name.toLowerCase().trim().replace(/\s+/g, ' ') === name.toLowerCase().trim().replace(/\s+/g, ' ');
+
+  if (!isEmailMatch || !isNameMatch) {
+    return next(new AppError('User details do not match the exam invitation.', 400));
+  }
+
+  // Step 6: Immediately return questions WITHOUT correctAnswer immediately
+  const allQuestions = await ExamQuestion.find({}).sort({ createdAt: 1 });
+  const sanitizedQuestions = allQuestions.map((q) => ({
+    _id: q._id,
+    question: q.question,
+    type: q.type || (q.options && q.options.length > 0 ? 'mcq' : 'written'),
+    options: q.options,
+    marks: q.marks
+  }));
+
+  return sendResponse(res, 200, 'Login successful. Starting exam...', {
+    user: {
+      name: examUser.name,
+      email: examUser.email,
+      phone: examUser.phone
+    },
+    questions: sanitizedQuestions
+  });
+});
+
+/**
+ * Submit Exam (User Public Endpoint)
+ * POST /api/v1/exam/:token/submit
+ * Validates token, 24h expiry, user details match.
+ * Evaluates score server-side, saves results, invalidates token (examToken = null), and sends confirmation email.
  */
 const submitExam = asyncHandler(async (req, res, next) => {
-  const { examId, answers } = req.body;
+  const cleanToken = req.params.token ? req.params.token.trim() : '';
+  const { email, phone, name, answers } = req.body;
 
-  if (!examId || !answers || !Array.isArray(answers)) {
-    return next(new ValidationError('examId and answers array are required'));
+  if (!cleanToken) {
+    return next(new NotFoundError('Invalid exam link'));
   }
 
-  if (!mongoose.Types.ObjectId.isValid(examId)) {
-    return next(new ValidationError('Invalid Exam ID format'));
+  if (!answers || !Array.isArray(answers)) {
+    return next(new ValidationError('Submitted answers are required.'));
   }
 
-  // Fetch exam
-  const exam = await Exam.findById(examId);
-  if (!exam) {
-    return next(new NotFoundError('Exam not found'));
+  const examUser = await ExamUser.findOne({ examToken: cleanToken });
+  if (!examUser) {
+    return next(new NotFoundError('Invalid exam link'));
   }
 
-  // Enforce that only published exams can be submitted by users
-  if (req.user.role === 'user' && !exam.isPublished) {
-    return next(new ForbiddenError('Cannot submit answers for an unpublished exam'));
-  }
+  // Check 24-hour expiry
+  const now = new Date();
+  const expiresAt = examUser.examTokenExpiresAt ? new Date(examUser.examTokenExpiresAt) : null;
 
-  let marksObtained = 0;
-  let correctAnswersCount = 0;
-  let incorrectAnswersCount = 0;
-  const evaluationDetails = [];
-
-  // Grade the submission
-  exam.questions.forEach((q) => {
-    // Look for a matching answer in the submission
-    const submitted = answers.find((ans) => ans.questionId === q._id.toString());
-    const selectedAnswer = submitted ? (submitted.selectedAnswer || submitted.answer) : null;
-
-    if (q.type === 'descriptive') {
-      evaluationDetails.push({
-        questionId: q._id,
-        question: q.question,
-        type: q.type,
-        answer: selectedAnswer,
-        marks: q.marks,
-        marksAwarded: 0 // Not auto-evaluated
-      });
-      return;
+  if (expiresAt && now.getTime() > expiresAt.getTime()) {
+    if (examUser.examStatus !== 'completed') {
+      examUser.examStatus = 'expired';
+      await examUser.save();
     }
+    return next(new AppError('Exam link has expired', 400));
+  }
 
-    let isCorrect = false;
+  if (examUser.examStatus === 'expired') {
+    return next(new AppError('Exam link has expired', 400));
+  }
 
-    // Normalise and compare
-    if (selectedAnswer !== null && selectedAnswer !== undefined) {
-      const normalizedSelected = selectedAnswer.toString().trim().toLowerCase();
-      const normalizedCorrect = q.correctAnswer ? q.correctAnswer.toString().trim().toLowerCase() : '';
+  if (examUser.examStatus === 'completed') {
+    return next(new AppError('This exam has already been submitted.', 400));
+  }
 
-      if (normalizedSelected === normalizedCorrect) {
-        isCorrect = true;
-      }
+  // Verify details match
+  if (email && name) {
+    const isEmailMatch = examUser.email.toLowerCase().trim() === email.toLowerCase().trim();
+    const isNameMatch = examUser.name.toLowerCase().trim().replace(/\s+/g, ' ') === name.toLowerCase().trim().replace(/\s+/g, ' ');
+
+    if (!isEmailMatch || !isNameMatch) {
+      return next(new AppError('User details do not match the exam invitation.', 400));
     }
+  }
 
-    if (isCorrect) {
-      marksObtained += q.marks;
-      correctAnswersCount++;
-    } else {
-      incorrectAnswersCount++;
+  // Server-side score calculation
+  let score = 0;
+  let totalMarks = 0;
+  const allQuestions = await ExamQuestion.find({});
+
+  for (const q of allQuestions) {
+    totalMarks += (q.marks || 1);
+    const submittedObj = answers.find((ans) => ans.questionId && ans.questionId.toString() === q._id.toString());
+    const submittedAnswer = submittedObj ? (submittedObj.answer || submittedObj.selectedAnswer || '') : '';
+
+    if (submittedAnswer && submittedAnswer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase()) {
+      score += (q.marks || 1);
     }
+  }
 
-    evaluationDetails.push({
-      questionId: q._id,
-      question: q.question,
-      type: q.type,
-      options: q.options,
-      correctAnswer: req.user.role === 'admin' ? q.correctAnswer : undefined, // Keep key hidden from regular users if desired, or include as feedback
-      selectedAnswer,
-      isCorrect,
-      marks: q.marks,
-      marksAwarded: isCorrect ? q.marks : 0
-    });
+  // Save exam results
+  examUser.score = score;
+  examUser.totalMarks = totalMarks;
+  examUser.submittedAt = new Date();
+  examUser.examStatus = 'completed';
+  await examUser.save();
+
+  // Send real examination result email after calculating result
+  await sendResultEmail(
+    examUser.email,
+    examUser.name || examUser.email,
+    'Aviation Courses Examination',
+    score,
+    totalMarks
+  );
+
+  return sendResponse(res, 200, 'Exam submitted successfully', {
+    score,
+    totalMarks,
+    submittedAt: examUser.submittedAt
   });
-
-  const resultSummary = {
-    examId: exam._id,
-    examTitle: exam.title,
-    totalQuestions: exam.questions.length,
-    correctAnswersCount,
-    incorrectAnswersCount,
-    totalMarks: exam.totalMarks,
-    marksObtained,
-    percentage: exam.totalMarks > 0 ? Number(((marksObtained / exam.totalMarks) * 100).toFixed(2)) : 0
-  };
-
-  // Database Save with proper logging and duplicate prevention logic
-  let savedResult;
-  try {
-    savedResult = await Result.create({
-      user: req.user._id,
-      userEmail: req.user.userEmail || req.user.anantEmail || 'Unknown',
-      examId: exam._id,
-      examName: exam.title,
-      marksObtained: resultSummary.marksObtained,
-      totalMarks: resultSummary.totalMarks,
-      percentage: resultSummary.percentage,
-      evaluation: evaluationDetails,
-      status: 'Completed'
-    });
-  } catch (err) {
-    if (err.code === 11000) {
-      console.log(`[INFO] Duplicate result submission prevention triggered for user ${req.user._id} and exam ${exam._id}.`);
-      // Find existing submission to return it
-      savedResult = await Result.findOne({ user: req.user._id, examId: exam._id });
-    } else {
-      console.error('[ERROR] Failed to save exam submission:', err);
-      return next(err);
-    }
-  }
-
-  return sendResponse(res, 200, 'Exam submitted and graded successfully', {
-    summary: {
-      ...resultSummary,
-      _id: savedResult ? savedResult._id : undefined
-    },
-    evaluation: evaluationDetails
-  });
-});
-
-/**
- * Get All Submissions (Admin Only)
- */
-const getAllSubmissions = asyncHandler(async (req, res, next) => {
-  const submissions = await Result.find({})
-    .sort({ createdAt: -1 });
-
-  return sendResponse(res, 200, 'All exam submissions retrieved successfully', { submissions });
-});
-
-/**
- * Delete Submission (Admin Only)
- */
-const deleteSubmission = asyncHandler(async (req, res, next) => {
-  console.log(`🗑️ [DELETE SUBMISSION REQUEST] Target ID: "${req.params.id}" requested by Admin ID: "${req.user ? req.user._id : 'unknown'}"`);
-
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-    console.error(`❌ [DELETE SUBMISSION ERROR] Invalid ObjectId format: "${req.params.id}"`);
-    return next(new NotFoundError('Submission not found'));
-  }
-
-  const submission = await Result.findByIdAndDelete(req.params.id);
-
-  if (!submission) {
-    console.error(`❌ [DELETE SUBMISSION ERROR] Submission with ID "${req.params.id}" not found in database.`);
-    return next(new NotFoundError('Submission not found'));
-  }
-
-  console.log(`✓ [DELETE SUBMISSION SUCCESS] Submission "${req.params.id}" deleted successfully.`);
-  return sendResponse(res, 200, 'Submission deleted successfully');
-});
-
-/**
- * Get Completed Exams for Current User (User and Admin)
- */
-const getCompletedExams = asyncHandler(async (req, res, next) => {
-  const submissions = await Result.find({ user: req.user._id }).select('examId');
-  const completedExamIds = submissions.map((sub) => sub.examId.toString());
-
-  return sendResponse(res, 200, 'Completed exam IDs retrieved successfully', { completedExamIds });
 });
 
 module.exports = {
-  createExam,
-  getAllExams,
-  getSingleExam,
-  updateExam,
-  deleteExam,
-  publishExam,
-  submitExam,
-  getAllSubmissions,
-  deleteSubmission,
-  getCompletedExams
+  // Admin Candidate Controllers
+  createExamUser,
+  getExamUsers,
+  getSingleExamUser,
+  deleteExamUser,
+  sendExamLink,
+  getExamResults,
+  sendResultEmailToCandidate,
+
+  // Admin Question Controllers
+  createQuestion,
+  getQuestions,
+  updateQuestion,
+  deleteQuestion,
+
+  // User Candidate Controllers
+  checkExamToken,
+  startExam,
+  submitExam
 };

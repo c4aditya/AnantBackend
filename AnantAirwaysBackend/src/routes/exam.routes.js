@@ -1,36 +1,51 @@
 const express = require('express');
 const router = express.Router();
 const {
-  createExam,
-  getAllExams,
-  getSingleExam,
-  updateExam,
-  deleteExam,
-  publishExam,
-  submitExam,
-  getAllSubmissions,
-  deleteSubmission,
-  getCompletedExams
+  // Admin Candidate Controllers
+  createExamUser,
+  getExamUsers,
+  getSingleExamUser,
+  deleteExamUser,
+  sendExamLink,
+  getExamResults,
+  sendResultEmailToCandidate,
+
+  // Admin Question Controllers
+  createQuestion,
+  getQuestions,
+  updateQuestion,
+  deleteQuestion,
+
+  // User Candidate Controllers
+  checkExamToken,
+  startExam,
+  submitExam
 } = require('../controllers/exam.controller');
 const { protect, authorizeRoles } = require('../middlewares/auth.middleware');
 
-// All exam routes require authentication
-router.use(protect);
+// ==========================================
+// ADMIN ROUTES (Requires Admin Auth Cookie)
+// ==========================================
+router.post('/users', protect, authorizeRoles('admin'), createExamUser);
+router.get('/users', protect, authorizeRoles('admin'), getExamUsers);
+router.get('/users/:id', protect, authorizeRoles('admin'), getSingleExamUser);
+router.delete('/users/:id', protect, authorizeRoles('admin'), deleteExamUser);
+router.post('/users/:id/send-link', protect, authorizeRoles('admin'), sendExamLink);
 
-// Static / Fixed routes (MUST be defined before dynamic :id parameter routes)
-router.get('/', getAllExams); // Lists all for Admin, published-only for User
-router.get('/completed', getCompletedExams);
-router.get('/submissions', authorizeRoles('admin'), getAllSubmissions);
-router.post('/submit', authorizeRoles('user', 'admin'), submitExam); // User takes/submits exam
-router.post('/', authorizeRoles('admin'), createExam);
+router.get('/results', protect, authorizeRoles('admin'), getExamResults);
+router.post('/results/:id/send-result', protect, authorizeRoles('admin'), sendResultEmailToCandidate);
 
-// Specific nested parameter routes
-router.delete('/submissions/:id', authorizeRoles('admin'), deleteSubmission);
+router.post('/questions', protect, authorizeRoles('admin'), createQuestion);
+router.get('/questions', protect, authorizeRoles('admin'), getQuestions);
+router.put('/questions/:id', protect, authorizeRoles('admin'), updateQuestion);
+router.delete('/questions/:id', protect, authorizeRoles('admin'), deleteQuestion);
 
-// Dynamic Parameterized routes (MUST come after all fixed paths to prevent collision)
-router.get('/:id', getSingleExam); // Retrieves full for Admin, published-only stripped for User
-router.put('/:id', authorizeRoles('admin'), updateExam);
-router.delete('/:id', authorizeRoles('admin'), deleteExam);
-router.patch('/:id/publish', authorizeRoles('admin'), publishExam);
+// ==========================================
+// USER ROUTES (Token Based Public Verification & Exam)
+// ==========================================
+router.get('/:token', checkExamToken);
+router.post('/:token/start', startExam);
+router.post('/:token/verify', startExam); // Alias for startExam
+router.post('/:token/submit', submitExam);
 
 module.exports = router;

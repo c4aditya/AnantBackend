@@ -1,7 +1,6 @@
-const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user.model');
-const { ValidationError, UnauthorizedError, AppError, NotFoundError } = require('../utils/errors');
+const { ValidationError, UnauthorizedError, AppError } = require('../utils/errors');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendResponse } = require('../utils/apiResponse');
 
@@ -19,17 +18,16 @@ const sendTokenResponse = (user, statusCode, message, res) => {
     httpOnly: true,
     sameSite: 'strict',
     secure: process.env.NODE_ENV === 'production',
-    expires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 1 day expiration
+    expires: new Date(Date.now() + 24 * 60 * 60 * 1000)
   };
 
   res.cookie('token', token, cookieOptions);
 
-  // Return clean user object without password
   const userResponse = {
     _id: user._id,
-    anantEmail: user.anantEmail,
-    userEmail: user.userEmail,
-    userPhoneNumber: user.userPhoneNumber,
+    adminEmail: user.adminEmail || user.email,
+    email: user.email || user.adminEmail,
+    anantEmail: user.email || user.adminEmail,
     role: user.role,
     isActive: user.isActive
   };
@@ -43,22 +41,32 @@ const sendTokenResponse = (user, statusCode, message, res) => {
 };
 
 /**
- * Create Admin (Role automatically becomes "admin")
- * Public or admin setup endpoint
+ * 1. Create Admin
+ * POST /api/v1/auth/create-admin
+ * Accepts ONLY: adminEmail, adminPassword (or email, password)
  */
 const createAdmin = asyncHandler(async (req, res, next) => {
-  const { anantEmail, password, userEmail, userPhoneNumber } = req.body;
+  const adminEmail = req.body.adminEmail || req.body.email || req.body.anantEmail;
+  const adminPassword = req.body.adminPassword || req.body.password;
 
-  if (!anantEmail || !password) {
-    return next(new ValidationError('All fields (anantEmail, password, userPhoneNumber) are required'));
+  if (!adminEmail || !adminPassword) {
+    return next(new ValidationError('adminEmail and adminPassword are required'));
   }
 
-  // Create admin user
+  const existingAdmin = await User.findOne({
+    $or: [
+      { adminEmail: adminEmail.toLowerCase().trim() },
+      { email: adminEmail.toLowerCase().trim() }
+    ]
+  });
+
+  if (existingAdmin) {
+    return next(new AppError('An admin account with this email already exists.', 409));
+  }
+
   const admin = await User.create({
-    anantEmail,
-    userEmail: userEmail || anantEmail,
-    password,  
-    userPhoneNumber, 
+    adminEmail: adminEmail.toLowerCase().trim(),
+    adminPassword,
     role: 'admin'
   });
 
@@ -66,257 +74,74 @@ const createAdmin = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Add User (Admin only)
- */
-const addUser = asyncHandler(async (req, res, next) => {
-  const {anantEmail,  userEmail, password, userPhoneNumber } = req.body;
-
-  if (!anantEmail || !userEmail  || !password ||  !userPhoneNumber) {
-    return next(new ValidationError('All fields (anantEmail, password,  userPhoneNumber) are required'));
-  }
-
-  if(anantEmail !== userEmail){
-
-    return res.status(400).json({
-      success: false,
-      message: 'Both emails must be the same. Please provide the same email for both anantEmail and userEmail.'
-    });
-  }
-
-  // Create standard user
-  const user = await User.create({
-    anantEmail,
-    userEmail,
-    password,    
-    userPhoneNumber,
-    role: 'user'
-  });
-
-  // Exclude password from return payload
-  const responseData = {
-    _id: user._id, 
-    anantEmail: user.anantEmail,
-    userEmail: user.userEmail,   
-    userPhoneNumber: user.userPhoneNumber,
-    role: user.role,
-    isActive: user.isActive,
-    createdAt: user.createdAt
-  };
-
-  return sendResponse(res, 201, 'User added successfully', { user: responseData });
-});
-
-/**
- * User Login
- */
-const loginUser = asyncHandler(async (req, res, next) => {
-  const { anantEmail, password,  userPhoneNumber } = req.body;
-
-  // Validate inputs
-  if (!anantEmail || !password ||  !userPhoneNumber) {
-    return next(new ValidationError('All login fields are required'));
-  }
-
-  // Check user exists matching all three fields
-  const user = await User.findOne({
-    anantEmail,
-    
-    userPhoneNumber
-  }).select('+password');
-
-  if (!user) {
-    return next(new ValidationError('User details do not match records.'));
-  }
-
-  // Check if account is active
-  if (!user.isActive) {
-    return next(new UnauthorizedError('Your account has been deactivated.'));
-  }
-
-  // Verify role is "user" to prevent admin logging in via user login if desired (or allow both, but usually roles are strict)
-  if (user.role !== 'user') {
-    return next(new ValidationError('User details do not match records.'));
-  }
-
-  // Compare passwords
-  const isMatch = await user.comparePassword(password);
-  if (!isMatch) {
-    return next(new ValidationError('User details do not match records.'));
-  }
-
-  return sendTokenResponse(user, 200, 'User logged in successfully', res);
-});
-
-/**
- * Admin Login
+ * 2. Login Admin
+ * POST /api/v1/auth/login-admin
+ * Accepts ONLY: adminEmail, adminPassword (or email, password)
  */
 const loginAdmin = asyncHandler(async (req, res, next) => {
-  const { anantEmail, password,  userPhoneNumber } = req.body;
+  const adminEmail = req.body.adminEmail || req.body.email || req.body.anantEmail;
+  const adminPassword = req.body.adminPassword || req.body.password;
 
-  // Validate inputs
-  if (!anantEmail || !password  || !userPhoneNumber) {
-    return next(new ValidationError('All login fields are required'));
+  if (!adminEmail || !adminPassword) {
+    return next(new ValidationError('adminEmail and adminPassword are required'));
   }
 
-  // Check user exists matching all fields and verify role is 'admin'
   const admin = await User.findOne({
-    anantEmail,    
-    userPhoneNumber,
-    role: 'admin'
-  }).select('+password');
+    $or: [
+      { adminEmail: adminEmail.toLowerCase().trim() },
+      { email: adminEmail.toLowerCase().trim() }
+    ]
+  }).select('+adminPassword +password');
 
-  if (!admin) {
-    return next(new ValidationError('User details do not match records.'));
+  if (!admin || admin.role !== 'admin') {
+    return next(new UnauthorizedError('Invalid admin credentials'));
+  }
+
+  const isMatch = await admin.comparePassword(adminPassword);
+  if (!isMatch) {
+    return next(new UnauthorizedError('Invalid admin credentials'));
   }
 
   if (!admin.isActive) {
-    return next(new UnauthorizedError('Your admin account has been deactivated.'));
-  }
-
-  // Compare passwords
-  const isMatch = await admin.comparePassword(password);
-  if (!isMatch) {
-    return next(new ValidationError('User details do not match records.'));
+    return next(new UnauthorizedError('Your account has been deactivated'));
   }
 
   return sendTokenResponse(admin, 200, 'Admin logged in successfully', res);
 });
 
 /**
+ * Get Current User Profile
+ * GET /api/v1/auth/me
+ */
+const getMe = asyncHandler(async (req, res, next) => {
+  const userResponse = {
+    _id: req.user._id,
+    adminEmail: req.user.adminEmail || req.user.email,
+    email: req.user.email || req.user.adminEmail,
+    anantEmail: req.user.email || req.user.adminEmail,
+    role: req.user.role,
+    isActive: req.user.isActive
+  };
+
+  return sendResponse(res, 200, 'User profile retrieved successfully', { user: userResponse });
+});
+
+/**
  * Logout User / Admin
+ * POST /api/v1/auth/logout
  */
 const logout = asyncHandler(async (req, res, next) => {
   res.cookie('token', 'none', {
-    httpOnly: true,
-    expires: new Date(Date.now() + 10 * 1000), // expires in 10 seconds
-    sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production'
+    expires: new Date(Date.now() + 10 * 1000),
+    httpOnly: true
   });
 
   return sendResponse(res, 200, 'Logged out successfully');
 });
 
-/**
- * Get Current Logged-in User
- */
-const getCurrentUser = asyncHandler(async (req, res, next) => {
-  // Return req.user attached by protect middleware
-  const user = {
-    _id: req.user._id,
-    anantEmail: req.user.anantEmail,
-    
-    userPhoneNumber: req.user.userPhoneNumber,
-    role: req.user.role,
-    isActive: req.user.isActive,
-    createdAt: req.user.createdAt
-  };
-
-  return sendResponse(res, 200, 'Current user profile retrieved successfully', { user });
-});
-
-/**
- * Get All Users (Admin only)
- */
-const getAllUsers = asyncHandler(async (req, res, next) => {
-  const users = await User.find({}).select('-password');
-  return sendResponse(res, 200, 'Users retrieved successfully', { users });
-});
-
-/**
- * Delete User (Admin only)
- */
-const deleteUser = asyncHandler(async (req, res, next) => {
-  console.log(`🗑️ [DELETE USER REQUEST] Target ID: "${req.params.id}" requested by Admin ID: "${req.user ? req.user._id : 'unknown'}"`);
-
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-    console.error(`❌ [DELETE USER ERROR] Invalid ObjectId format: "${req.params.id}"`);
-    return next(new NotFoundError('User not found'));
-  }
-
-  const user = await User.findByIdAndDelete(req.params.id);
-
-  if (!user) {
-    console.error(`❌ [DELETE USER ERROR] User with ID "${req.params.id}" not found in database.`);
-    return next(new NotFoundError('User not found'));
-  }
-
-  console.log(`✓ [DELETE USER SUCCESS] User "${user.anantEmail || user._id}" deleted successfully.`);
-  return sendResponse(res, 200, 'User deleted successfully');
-});
-
-/**
- * Forgot Password - Verify if user email exists
- */
-const forgotPassword = asyncHandler(async (req, res, next) => {
-  const { email } = req.body;
-
-  if (!email) {
-    return next(new ValidationError('Email is required'));
-  }
-
-  const normalizedEmail = email.trim().toLowerCase();
-
-  // Search user matching either anantEmail or userEmail
-  const user = await User.findOne({
-    $or: [
-      { anantEmail: normalizedEmail },
-      { userEmail: normalizedEmail }
-    ]
-  });
-
-  if (!user) {
-    return next(new ValidationError('No account found with this email address.'));
-  }
-
-  return sendResponse(res, 200, 'User verified successfully', {
-    email: user.anantEmail || user.userEmail
-  });
-});
-
-/**
- * Reset Password - Update password for verified user
- */
-const resetPassword = asyncHandler(async (req, res, next) => {
-  const { email, newPassword } = req.body;
-
-  if (!email || !newPassword) {
-    return next(new ValidationError('Email and new password are required'));
-  }
-
-  if (newPassword.length < 6) {
-    return next(new ValidationError('Password must be at least 6 characters long'));
-  }
-
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const user = await User.findOne({
-    $or: [
-      { anantEmail: normalizedEmail },
-      { userEmail: normalizedEmail }
-    ]
-  }).select('+password');
-
-  if (!user) {
-    return next(new NotFoundError('User not found. Please verify your email and try again.'));
-  }
-
-  // Update password field - userSchema pre('save') hook will automatically hash the new password
-  user.password = newPassword;
-  await user.save();
-
-  return sendResponse(res, 200, 'Password updated successfully. You can now log in with your new password.');
-});
-
 module.exports = {
   createAdmin,
-  addUser,
-  loginUser,
   loginAdmin,
-  logout,
-  getCurrentUser,
-  getAllUsers,
-  deleteUser,
-  forgotPassword,
-  resetPassword
+  getMe,
+  logout
 };
-

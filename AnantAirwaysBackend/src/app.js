@@ -42,6 +42,7 @@ app.use(cookieParser());
 
 // API Route Definitions
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/exam', examRoutes);
 app.use('/api/v1/exams', examRoutes);
 app.use('/api/v1/flights', flightRoutes);
 

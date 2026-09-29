@@ -109,7 +109,7 @@ Access Link: ${examUrl}
 
 EXAMINATION INSTRUCTIONS:
 1. Open the examination link above.
-2. Enter your registered Email, Phone Number, and Name.
+2. Enter your registered Email.
 3. Follow the instructions on the screen and start your examination.
 
 IMPORTANT NOTICE:

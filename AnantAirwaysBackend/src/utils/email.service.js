@@ -111,6 +111,7 @@ EXAMINATION INSTRUCTIONS:
 1. Open the examination link above.
 2. Enter your registered Email.
 3. Follow the instructions on the screen and start your examination.
+4. Please do your exam between 3:00 PM to 4:00 PM (IST) on the scheduled date.
 
 IMPORTANT NOTICE:
 - Expiry Time: ${expiryFormatted}
@@ -157,13 +158,14 @@ support@anantairways.in`;
                   <li>Click the button below to start your exam.</li>
                   <li>Enter your registered Email, Phone Number, and Name.</li>
                   <li>Follow the on-screen instructions to submit.</li>
+                  <li>Please do your exam between 3:00 PM to 4:00 PM (IST) on the scheduled date.</li>
                 </ol>
               </div>
 
               <!-- Button -->
               <div style="text-align:center; margin:25px 0;">
                 <a href="${examUrl}" target="_blank" style="background-color:#0284c7; color:#ffffff; padding:12px 28px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:15px; display:inline-block;">
-                  Start Examination
+                  Start Examination Between 3:00 PM to 4:00 PM (IST)
                 </a>
               </div>
 
